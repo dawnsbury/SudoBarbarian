@@ -14,6 +14,7 @@ using Dawnsbury.Core.CombatActions;
 using Dawnsbury.Core.Coroutines.Options;
 using Dawnsbury.Core.Coroutines.Requests;
 using Dawnsbury.Core.Creatures;
+using Dawnsbury.Core.Creatures.Parts;
 using Dawnsbury.Core.Intelligence;
 using Dawnsbury.Core.Mechanics;
 using Dawnsbury.Core.Mechanics.Core;
@@ -21,6 +22,7 @@ using Dawnsbury.Core.Mechanics.Damage;
 using Dawnsbury.Core.Mechanics.Enumerations;
 using Dawnsbury.Core.Mechanics.Rules;
 using Dawnsbury.Core.Mechanics.Targeting;
+using Dawnsbury.Core.Mechanics.Targeting.TargetingRequirements;
 using Dawnsbury.Core.Mechanics.Targeting.Targets;
 using Dawnsbury.Core.Mechanics.Treasure;
 using Dawnsbury.Core.Possibilities;
@@ -1354,6 +1356,8 @@ namespace Dawnsbury.Mods.Feats.Classes.Gunslinger
                                 CombatAction riskyReloadAction = new CombatAction(riskyReloadEffect.Owner, new SideBySideIllustration(heldItem.Illustration, IllustrationName.TrueStrike), "Risky Reload", [Trait.Flourish, Trait.Basic], riskyReloadFeat.RulesText, basicStrike.Target).WithActionCost(1).WithItem(heldItem);
                                 // HACK: Hotfix for null ref StrikeRules error
                                 riskyReloadAction.StrikeModifiers = basicStrike.StrikeModifiers;
+                                riskyReloadAction.Description = StrikeRules.CreateBasicStrikeDescription4(riskyReloadAction.StrikeModifiers, prologueText: "Reload your weapon.");
+                                //riskyReloadAction.WithActiveRollSpecification(new ActiveRollSpecification(Checks.Attack(heldItem, self.Owner.Actions.AttackedThisManyTimesThisTurn), Checks.DefenseDC(Defense.AC)));
                                 riskyReloadAction.WithEffectOnEachTarget(async delegate (CombatAction riskyReload, Creature attacker, Creature defender, CheckResult result)
                                 {
                                     if (heldItem.HasTrait(FirearmTraits.DoubleBarrel))
@@ -1388,12 +1392,22 @@ namespace Dawnsbury.Mods.Feats.Classes.Gunslinger
                                     {
                                         return Usability.NotUsable("Can not be reloaded.");
                                     }
+                                    else if (heldItem.WeaponProperties != null && (heldItem.HasTrait(Trait.Repeating) || heldItem.HasTrait(Trait.Repeating6) || heldItem.HasTrait(Trait.Repeating8)) && heldItem.EphemeralItemProperties.ReloadActionsAlreadyTaken < (attacker.CarriesItem(ItemName.ShootistBandolier) ? 1 : 2))
+                                    {
+                                        return Usability.NotUsable("This repeating weapon needs to be reloaded more before you can reload and strike.");
+                                    }
 
 
                                     return Usability.Usable;
                                 });
 
-                                riskyReloadAction.WithTargetingTooltip((action, defender, index) => action.Description);
+                                ((CreatureTarget)riskyReloadAction.Target).CreatureTargetingRequirements.RemoveAll(requirement => requirement is WeaponIsLoadedCreatureTargetingRequirement);
+
+                                riskyReloadAction.WithTargetingTooltip((action, defender, index) =>
+                                {
+                                    CombatAction strike = action.Owner.CreateStrike(heldItem);
+                                    return CombatActionExecution.BreakdownAttackForTooltip(strike, defender).TooltipDescription;
+                                });
 
                                 ActionPossibility riskyReloadPossibility = new ActionPossibility(riskyReloadAction);
 
