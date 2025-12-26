@@ -53,7 +53,7 @@ namespace Dawnsbury.Mods.Items.Firearms.RegisteredComponents
         public static readonly Trait Parry = ModManager.RegisterTrait("Parry", new TraitProperties("Parry", true, "This weapon can be used defensively to block attacks. While wielding this weapon, if your proficiency with it is trained or better, you can spend a single action to position your weapon defensively, gaining a +1 circumstance bonus to AC until the start of your next turn.", relevantForShortBlock: true));
 
         /// <summary>
-        /// Adds the Scatter 10 trait for firearms
+        /// Adds the Misfired trait for firearms
         /// </summary>
         public static readonly Trait Misfired = ModManager.RegisterTrait("Misfired", new TraitProperties("Misfired", true, "This firearm was misfired and is now jammed. You must use an Interact action to clear the jam before you can reload the weapon and fire again.", relevantForShortBlock: true));
 

@@ -181,25 +181,26 @@ namespace Dawnsbury.Mods.Items.Firearms
             ModManager.RegisterNewItemIntoTheShop("Bayonet", itemName =>
             {
                 Item bayonet = new Item(itemName, FirearmModdedIllustrations.Bayonet, "Bayonet", 0, 1, Trait.Agile, Trait.Finesse, Trait.Martial, Trait.Knife, FirearmTraits.AttachedWeapon, FirearmTraits.Bayonet);
-                return bayonet
-                    .WithRuneProperties(new RuneProperties("Bayonet", FirearmRuneKind.Bayonet, "An attachable blade for firearms and crossbows.", "Attach this to a firearm or crossbow {Red}(By dragging it onto the item){/Red}.\n\nAdds an agile and finesse Knife that deals 1d4 slashing. This blade will use all runes from its attached weapon.", item =>
-                    {
-                        item.Traits.Add(FirearmTraits.AttachedWeapon);
-                        item.Traits.Add(FirearmTraits.Bayonet);
-                        item.Tag = new AttachedWeapon(bayonet, item, new WeaponProperties("1d4", DamageKind.Slashing));
-                    })
+                bayonet.WithRuneProperties(new RuneProperties("Bayonet", FirearmRuneKind.Bayonet, "An attachable blade for firearms and crossbows.", "Attach this to a firearm or crossbow {Red}(By dragging it onto the item){/Red}.\n\nAdds an agile and finesse Knife that deals 1d4 slashing. This blade will use all runes from its attached weapon.", item =>
+                {
+                    item.Traits.Add(FirearmTraits.AttachedWeapon);
+                    item.Traits.Add(FirearmTraits.Bayonet);
+                    item.Tag = new AttachedWeapon(bayonet, item, new WeaponProperties("1d4", DamageKind.Slashing));
+                })
                         .WithCanBeAppliedTo((Item rune, Item weapon) =>
                         {
                             if (!weapon.HasTrait(Trait.Firearm) && !weapon.HasTrait(Trait.Crossbow))
                             {
                                 return "Must be attached to a Firearm or Crossbow";
                             }
-                            else if (weapon.HasTrait(FirearmTraits.AttachedWeapon)) {
+                            else if (weapon.HasTrait(FirearmTraits.AttachedWeapon))
+                            {
                                 return "A weapon attachment is already attached.";
                             }
 
                             return null;
                         }));
+                return bayonet;
             });
 
             ModManager.RegisterNewItemIntoTheShop("Reinforced Stock", itemName =>
@@ -293,8 +294,19 @@ namespace Dawnsbury.Mods.Items.Firearms
                             AddDoubleBarrelFireStrikeAction(self);
                         }
 
+                        List<Item> unarmedStrikes = new List<Item>() { self.Owner.UnarmedStrike };
+                        foreach (QEffect qEffect in self.Owner.QEffects)
+                        {
+                            if (qEffect.AdditionalUnarmedStrike != null)
+                            {
+                                unarmedStrikes.Add(qEffect.AdditionalUnarmedStrike);
+                            }
+                        }
+
+                        List<Item> itemsToLoopThrough = self.Owner.HeldItems.Concat(unarmedStrikes).ToList();
+
                         // Loops through each item the owner is holding and adds logic for that trait
-                        foreach (Item item in self.Owner.HeldItems)
+                        foreach (Item item in itemsToLoopThrough)
                         {
                             // Adds the VersatileP trait to firearms with the Concussive trait
                             if (item.HasTrait(FirearmTraits.Concussive) && !item.HasTrait(Trait.VersatileP))
@@ -689,7 +701,7 @@ namespace Dawnsbury.Mods.Items.Firearms
         /// </summary>
         /// <param name="self">The state check</param>
         /// <param name="item">The Scatter trait item</param>
-        private static void AddScatterLogic(QEffect self, Item item)
+        private static void AddScatterLogicOG(QEffect self, Item item)
         {
             Creature owner = self.Owner;
             if (item.WeaponProperties != null)
@@ -720,6 +732,38 @@ namespace Dawnsbury.Mods.Items.Firearms
                                         await CommonSpellEffects.DealDirectSplashDamage(CombatAction.CreateSimple(owner, "Scatter"), DiceFormula.FromText(item.WeaponProperties.DamageDieCount.ToString()), splashTarget, bestDamageToTarget);
                                     }
                                 }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        /// <summary>
+        /// Adds the logic for all Scatter firearms
+        /// </summary>
+        /// <param name="self">The state check</param>
+        /// <param name="item">The Scatter trait item</param>
+        private static void AddScatterLogic(QEffect self, Item item)
+        {
+            Creature owner = self.Owner;
+            if (item.WeaponProperties != null)
+            {
+                owner.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
+                {
+                    AfterYouTakeAction = async (QEffect self, CombatAction action) =>
+                    {
+                        if (!action.HasTrait(FirearmTraits.IgnoreScatter) && action.CheckResult >= CheckResult.Success && action.Item != null && action.Item == item && action.HasTrait(Trait.Strike) && action.ChosenTargets != null && action.ChosenTargets.ChosenCreature != null && action.ChosenTargets.ChosenCreature != self.Owner && item.WeaponProperties != null)
+                        {
+                            Creature target = action.ChosenTargets.ChosenCreature;
+                            // The best damage against the original target, the map, and tile with the targeted creature is saved for the next checks
+                            List<DamageKind> damageOptions = item.DetermineDamageKinds();
+                            DamageKind bestDamageToTarget = target.WeaknessAndResistance.WhatDamageKindIsBestAgainstMe(damageOptions);
+                            int distance = (item.HasTrait(FirearmTraits.Scatter10)) ? 2 : 1;
+                            List<Creature> targetsInRange = target.Battle.AllCreatures.Where(creature => target.DistanceTo(creature) <= distance && target.HasLineOfEffectToIgnoreLesser(creature) < CoverKind.Blocked).ToList();
+                            foreach (Creature creature in targetsInRange)
+                            {
+                                await CommonSpellEffects.DealDirectSplashDamage(CombatAction.CreateSimple(owner, "Scatter"), DiceFormula.FromText(item.WeaponProperties.DamageDieCount.ToString()), creature, bestDamageToTarget);
                             }
                         }
                     }
@@ -886,10 +930,7 @@ namespace Dawnsbury.Mods.Items.Firearms
                                 {
                                     if (rune.RuneProperties != null && (rune.RuneProperties.RuneKind != FirearmRuneKind.Bayonet || rune.RuneProperties.RuneKind != FirearmRuneKind.ReinforcedStock))
                                     {
-                                        attachedWeapon.WithModification(new ItemModification(ItemModificationKind.Rune)
-                                        {
-                                            ItemName = rune.ItemName
-                                        });
+                                        attachedWeapon.WithModificationRune(rune.ItemName);
                                     }
                                 }
                             }
